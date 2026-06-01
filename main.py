@@ -16,6 +16,8 @@ import sys
 from datetime import datetime
 import os
 
+sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+
 class WhatsAppSender:
     def __init__(self, excel_file, country_code="+962"):
         """
@@ -363,7 +365,7 @@ class WhatsAppSender:
         
         # Save log
         log_file = f"whatsapp_log_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
-        with open(log_file, 'w') as f:
+        with open(log_file, 'w', encoding='utf-8') as f:
             f.write("\n".join(self.log))
         print(f"Log saved to: {log_file}")
 
