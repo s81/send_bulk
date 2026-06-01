@@ -91,22 +91,32 @@ class WhatsAppSender:
         try:
             df = pd.read_excel(self.excel_file)
 
-            # Check required columns
-            if 'phone' not in df.columns or 'message' not in df.columns:
-                print("✗ Excel must have 'phone' and 'message' columns")
+            # Check required columns (phone is required, message/image_path optional)
+            if 'phone' not in df.columns:
+                print("✗ Excel must have 'phone' column")
                 return None
 
-            # Filter out rows with missing phone or message
+            # Add missing columns if they don't exist
+            if 'message' not in df.columns:
+                df['message'] = None
+            if 'image_path' not in df.columns:
+                df['image_path'] = None
+
+            # Convert to string and strip whitespace, handling NaN values
+            df['phone'] = df['phone'].fillna('').astype(str).str.strip()
+            df['message'] = df['message'].fillna('').astype(str).str.strip()
+            df['image_path'] = df['image_path'].fillna('').astype(str).str.strip()
+
+            # Filter: at least one of message or image_path must be provided
             initial_count = len(df)
-            df = df.dropna(subset=['phone', 'message'])
-
-            # Convert phone to string and remove any whitespace
-            df['phone'] = df['phone'].astype(str).str.strip()
-            df['message'] = df['message'].astype(str).str.strip()
-
-            # Filter out empty strings
+            df = df[~((df['message'] == '') & (df['image_path'] == ''))]
             df = df[df['phone'] != '']
-            df = df[df['message'] != '']
+
+            # Resolve image paths relative to Excel directory
+            excel_dir = os.path.dirname(os.path.abspath(self.excel_file))
+            df['image_path'] = df['image_path'].apply(
+                lambda x: self._resolve_image_path(x, excel_dir) if x and x != '' else ''
+            )
 
             filtered_count = len(df)
             if filtered_count < initial_count:
