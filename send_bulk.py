@@ -294,7 +294,7 @@ class WhatsAppSender:
                         continue
                     elif action == 'skip':
                         self.failed_count += 1
-                        status = f"✗ {phone} - Skipped after error"
+                        status = f"✗ {phone} - Skipped: {str(e)[:50]}"
                         print(status)
                         self.log.append(status)
                         return
@@ -302,12 +302,17 @@ class WhatsAppSender:
                         print("\n⚠ Exiting...")
                         raise KeyboardInterrupt("User quit")
                 else:
-                    # Second failure - offer skip/quit (retry treated as skip)
-                    action = self._prompt_on_error(phone, message_type)
-                    if action == 'quit':
+                    # Final attempt - only offer skip/quit (no retry)
+                    while True:
+                        prompt = f"\n[Error] Failed to send to {phone} ({message_type}).\n[S]kip / [Q]uit? "
+                        choice = input(prompt).strip().upper()
+                        if choice in ['S', 'Q']:
+                            break
+                        print("Invalid choice. Please enter S or Q.")
+                    if choice == 'Q':
                         print("\n⚠ Exiting...")
                         raise KeyboardInterrupt("User quit")
-                    else:  # skip or retry (treated as skip after last attempt)
+                    else:  # skip
                         self.failed_count += 1
                         status = f"✗ {phone} - {str(e)[:50]}"
                         print(status)
@@ -326,12 +331,12 @@ class WhatsAppSender:
 
         print(f"\n📤 Starting bulk send... ({len(df)} messages)\n")
         
-        for idx, row in df.iterrows():
+        for i, (idx, row) in enumerate(df.iterrows(), start=1):
             phone = row['phone']
             message = row['message']
 
             image_path = row['image_path']
-            print(f"[{idx + 1}/{len(df)}] ", end="")
+            print(f"[{i}/{len(df)}] ", end="")
             self.send_message(phone, message, image_path)
         
         self.print_summary()
