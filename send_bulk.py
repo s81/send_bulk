@@ -144,8 +144,8 @@ class WhatsAppSender:
             print(f"✗ Error reading Excel: {e}")
             return None
 
-    def send_message(self, phone, message):
-        """Send message to a single phone number"""
+    def send_text_message(self, phone, message):
+        """Send a text message to a phone number"""
         try:
             phone_formatted = self.format_phone(phone)
 
@@ -170,20 +170,17 @@ class WhatsAppSender:
             send_btn.click()
 
             self.sent_count += 1
-            status = f"✓ {phone_formatted}"
+            status = f"✓ {phone_formatted} (text)"
             print(status)
             self.log.append(status)
 
-            # Rate limiting (avoid detection)
+            # Rate limiting
             time.sleep(2)
             return True
 
         except Exception as e:
-            self.failed_count += 1
-            status = f"✗ {phone} - {str(e)[:50]}"
-            print(status)
-            self.log.append(status)
-            return False
+            # Let exception propagate for dispatcher to handle
+            raise
 
     def send_bulk(self):
         """Send messages to all contacts"""
@@ -200,9 +197,9 @@ class WhatsAppSender:
         for idx, row in df.iterrows():
             phone = row['phone']
             message = row['message']
-            
+
             print(f"[{idx + 1}/{len(df)}] ", end="")
-            self.send_message(phone, message)
+            self.send_text_message(phone, message)
         
         self.print_summary()
 
