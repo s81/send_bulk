@@ -14,8 +14,15 @@ import pandas as pd
 import time
 import sys
 from datetime import datetime
+import os
 
 class WhatsAppSender:
+    def _resolve_image_path(self, image_path, excel_dir):
+        """Resolve relative paths to absolute, leave absolute paths unchanged."""
+        if os.path.isabs(image_path):
+            return image_path
+        return os.path.abspath(os.path.join(excel_dir, image_path))
+
     def __init__(self, excel_file, country_code="+962"):
         """
         Args:
