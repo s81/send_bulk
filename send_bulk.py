@@ -233,6 +233,15 @@ class WhatsAppSender:
             # Let exception propagate for dispatcher to handle
             raise
 
+    def _prompt_on_error(self, phone, message_type):
+        """Prompt user what to do on send failure. Returns: 'retry', 'skip', or 'quit'"""
+        while True:
+            prompt = f"\n[Error] Failed to send to {phone} ({message_type}).\n[R]etry / [S]kip / [Q]uit? "
+            choice = input(prompt).strip().upper()
+            if choice in ['R', 'S', 'Q']:
+                return {'R': 'retry', 'S': 'skip', 'Q': 'quit'}[choice]
+            print("Invalid choice. Please enter R, S, or Q.")
+
     def send_bulk(self):
         """Send messages to all contacts"""
         df = self.read_excel()
