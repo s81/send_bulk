@@ -107,29 +107,34 @@ class WhatsAppSender:
             df['message'] = df['message'].fillna('').astype(str).str.strip()
             df['image_path'] = df['image_path'].fillna('').astype(str).str.strip()
 
+            # Resolve image paths relative to Excel directory and validate existence
+            excel_dir = os.path.dirname(os.path.abspath(self.excel_file))
+
+            def resolve_and_validate_image_path(row):
+                image_path = row['image_path']
+                if not image_path or image_path == '':
+                    return ''
+                resolved_path = self._resolve_image_path(image_path, excel_dir)
+                if not os.path.exists(resolved_path):
+                    print(f"⚠ Image not found: {resolved_path}")
+                    self.log.append(f"⚠ {row['phone']} - Image not found: {resolved_path}")
+                    return ''
+                return resolved_path
+
+            df['image_path'] = df.apply(resolve_and_validate_image_path, axis=1)
+
+            # Log rows being dropped before filtering them out
+            no_content_mask = (df['message'] == '') & (df['image_path'] == '') & (df['phone'] != '')
+            for _, row in df[no_content_mask].iterrows():
+                status = f"✗ {row['phone']} - Skipped: no message or image"
+                print(status)
+                self.log.append(status)
+                self.failed_count += 1
+
             # Filter: at least one of message or image_path must be provided
             initial_count = len(df)
             df = df[~((df['message'] == '') & (df['image_path'] == ''))]
             df = df[df['phone'] != '']
-
-            # Resolve image paths relative to Excel directory and validate existence
-            excel_dir = os.path.dirname(os.path.abspath(self.excel_file))
-
-            def resolve_and_validate_image_path(image_path):
-                """Resolve path and validate it exists"""
-                if not image_path or image_path == '':
-                    return ''
-
-                resolved_path = self._resolve_image_path(image_path, excel_dir)
-
-                # Validate that the file exists
-                if resolved_path and not os.path.exists(resolved_path):
-                    print(f"⚠ Image not found: {resolved_path}")
-                    return ''
-
-                return resolved_path
-
-            df['image_path'] = df['image_path'].apply(resolve_and_validate_image_path)
 
             filtered_count = len(df)
             if filtered_count < initial_count:
