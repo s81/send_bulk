@@ -88,6 +88,21 @@ class WhatsAppSender:
             return image_path
         return os.path.abspath(os.path.join(excel_dir, image_path))
 
+    def _copy_image_to_clipboard(self, image_path):
+        """Copy image to Windows clipboard as DIB so it can be pasted into WhatsApp."""
+        import win32clipboard
+        from PIL import Image
+        import io
+        image = Image.open(image_path).convert('RGB')
+        buf = io.BytesIO()
+        image.save(buf, 'BMP')
+        data = buf.getvalue()[14:]  # strip 14-byte BMP file header, keep DIB
+        buf.close()
+        win32clipboard.OpenClipboard()
+        win32clipboard.EmptyClipboard()
+        win32clipboard.SetClipboardData(win32clipboard.CF_DIB, data)
+        win32clipboard.CloseClipboard()
+
     def read_excel(self):
         """Read Excel file and validate"""
         try:
@@ -191,27 +206,23 @@ class WhatsAppSender:
             raise
 
     def send_image_message(self, phone, image_path, caption=None):
-        """Send an image to a phone number with optional caption"""
+        """Send an image by pasting it from clipboard into the chat input."""
         try:
             phone_formatted = self.format_phone(phone)
 
-            # Open WhatsApp chat link
             self.driver.get(f"https://web.whatsapp.com/send?phone={phone_formatted}")
             time.sleep(3)
 
-            # Click attachment button (paperclip icon)
-            attach_btn = WebDriverWait(self.driver, 10).until(
-                EC.presence_of_element_located((By.XPATH, "//button[contains(@aria-label, 'Attach') or contains(@title, 'Attach')]"))
+            # Copy image to clipboard then paste into the chat input
+            self._copy_image_to_clipboard(image_path)
+            msg_box = WebDriverWait(self.driver, 10).until(
+                EC.presence_of_element_located((By.XPATH, "//div[@contenteditable='true'][@data-tab='10']"))
             )
-            attach_btn.click()
-            time.sleep(1)
+            msg_box.click()
+            msg_box.send_keys(Keys.CONTROL + 'v')
+            time.sleep(2)
 
-            # Find and interact with file input
-            file_input = self.driver.find_element(By.CSS_SELECTOR, "input[type='file']")
-            file_input.send_keys(image_path)
-            time.sleep(3)
-
-            # Type caption if provided — try multiple selectors (WhatsApp Web changes these)
+            # Type caption in preview modal if provided
             if caption and caption.strip():
                 for selector in [
                     "//div[@data-testid='media-caption-input']",
@@ -230,7 +241,6 @@ class WhatsAppSender:
                     except Exception:
                         continue
 
-            # Send via Enter key (language-independent, works in image preview)
             self.driver.find_element(By.TAG_NAME, 'body').send_keys(Keys.ENTER)
             time.sleep(1)
 
