@@ -287,6 +287,7 @@ class WhatsAppSender:
 
             except Exception as e:
                 if attempt < max_attempts:
+                    # First failure - offer full retry/skip/quit
                     action = self._prompt_on_error(phone, message_type)
                     if action == 'retry':
                         attempt += 1
@@ -301,11 +302,17 @@ class WhatsAppSender:
                         print("\n⚠ Exiting...")
                         raise KeyboardInterrupt("User quit")
                 else:
-                    self.failed_count += 1
-                    status = f"✗ {phone} - {str(e)[:50]}"
-                    print(status)
-                    self.log.append(status)
-                    return
+                    # Second failure - offer skip/quit (retry treated as skip)
+                    action = self._prompt_on_error(phone, message_type)
+                    if action == 'quit':
+                        print("\n⚠ Exiting...")
+                        raise KeyboardInterrupt("User quit")
+                    else:  # skip or retry (treated as skip after last attempt)
+                        self.failed_count += 1
+                        status = f"✗ {phone} - {str(e)[:50]}"
+                        print(status)
+                        self.log.append(status)
+                        return
 
     def send_bulk(self):
         """Send messages to all contacts"""
@@ -323,8 +330,9 @@ class WhatsAppSender:
             phone = row['phone']
             message = row['message']
 
+            image_path = row['image_path']
             print(f"[{idx + 1}/{len(df)}] ", end="")
-            self.send_message(phone, message)
+            self.send_message(phone, message, image_path)
         
         self.print_summary()
 
