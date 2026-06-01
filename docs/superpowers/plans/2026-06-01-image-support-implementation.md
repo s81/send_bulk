@@ -154,7 +154,8 @@ def send_text_message(self, phone, message):
         return True
 
     except Exception as e:
-        return False, str(e)[:100]
+        # Let exception propagate for dispatcher to handle
+        raise
 ```
 
 Note: Returns `(False, error_message)` on failure for the dispatcher to handle.
@@ -226,7 +227,8 @@ def send_image_message(self, phone, image_path, caption=None):
         return True
 
     except Exception as e:
-        return False, str(e)[:100]
+        # Let exception propagate for dispatcher to handle
+        raise
 ```
 
 - [ ] **Step 2: Commit**
@@ -314,15 +316,11 @@ def send_message(self, phone, message, image_path):
         try:
             if has_image:
                 caption = message if has_message else None
-                success = self.send_image_message(phone, image_path, caption)
+                self.send_image_message(phone, image_path, caption)
             else:
-                success = self.send_text_message(phone, message)
-
-            if success:
-                return  # Success, exit
-
-            # If we get here, send_*_message returned False
-            raise Exception("Send failed")
+                self.send_text_message(phone, message)
+            
+            return  # Success, exit function
 
         except Exception as e:
             if attempt < max_attempts:
