@@ -242,6 +242,71 @@ class WhatsAppSender:
                 return {'R': 'retry', 'S': 'skip', 'Q': 'quit'}[choice]
             print("Invalid choice. Please enter R, S, or Q.")
 
+    def send_message(self, phone, message, image_path):
+        """Dispatcher: route to text or image sender with retry/skip/quit handling"""
+        # Validate inputs
+        has_message = message and str(message).strip() != ''
+        has_image = image_path and str(image_path).strip() != ''
+
+        if not has_message and not has_image:
+            self.failed_count += 1
+            status = f"✗ {phone} - No message or image provided"
+            print(status)
+            self.log.append(status)
+            return
+
+        # Validate image file exists if provided
+        if has_image:
+            if not os.path.exists(image_path):
+                self.failed_count += 1
+                status = f"✗ {phone} - Image not found: {image_path}"
+                print(status)
+                self.log.append(status)
+                return
+            if not os.access(image_path, os.R_OK):
+                self.failed_count += 1
+                status = f"✗ {phone} - Cannot read image: {image_path}"
+                print(status)
+                self.log.append(status)
+                return
+
+        # Route to appropriate sender
+        message_type = 'image' if has_image else 'text'
+        attempt = 1
+        max_attempts = 2
+
+        while attempt <= max_attempts:
+            try:
+                if has_image:
+                    caption = message if has_message else None
+                    self.send_image_message(phone, image_path, caption)
+                else:
+                    self.send_text_message(phone, message)
+
+                return  # Success, exit function
+
+            except Exception as e:
+                if attempt < max_attempts:
+                    action = self._prompt_on_error(phone, message_type)
+                    if action == 'retry':
+                        attempt += 1
+                        continue
+                    elif action == 'skip':
+                        self.failed_count += 1
+                        status = f"✗ {phone} - Skipped after error"
+                        print(status)
+                        self.log.append(status)
+                        return
+                    else:  # quit
+                        print("\n⚠ Exiting...")
+                        raise KeyboardInterrupt("User quit")
+                else:
+                    self.failed_count += 1
+                    status = f"✗ {phone} - {str(e)[:50]}"
+                    print(status)
+                    self.log.append(status)
+                    return
+
     def send_bulk(self):
         """Send messages to all contacts"""
         df = self.read_excel()
