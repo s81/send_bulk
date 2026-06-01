@@ -36,12 +36,13 @@ class WhatsAppSender:
         self.log = []
 
     def setup_driver(self):
-        """Initialize Chrome driver with headless option (disable for testing)"""
+        """Initialize Chrome driver with persistent profile to skip QR scan after first login."""
         chrome_options = Options()
-        # chrome_options.add_argument("--headless")  # Uncomment for background mode
         chrome_options.add_argument("--no-sandbox")
         chrome_options.add_argument("--disable-dev-shm-usage")
-        
+        profile_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "chrome_profile")
+        chrome_options.add_argument(f"--user-data-dir={profile_dir}")
+
         self.driver = webdriver.Chrome(options=chrome_options)
         print("✓ Chrome driver initialized")
 
