@@ -199,7 +199,7 @@ class WhatsAppSender:
             message = row['message']
 
             print(f"[{idx + 1}/{len(df)}] ", end="")
-            self.send_text_message(phone, message)
+            self.send_message(phone, message)
         
         self.print_summary()
 
