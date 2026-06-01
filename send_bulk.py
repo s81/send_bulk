@@ -112,11 +112,24 @@ class WhatsAppSender:
             df = df[~((df['message'] == '') & (df['image_path'] == ''))]
             df = df[df['phone'] != '']
 
-            # Resolve image paths relative to Excel directory
+            # Resolve image paths relative to Excel directory and validate existence
             excel_dir = os.path.dirname(os.path.abspath(self.excel_file))
-            df['image_path'] = df['image_path'].apply(
-                lambda x: self._resolve_image_path(x, excel_dir) if x and x != '' else ''
-            )
+
+            def resolve_and_validate_image_path(image_path):
+                """Resolve path and validate it exists"""
+                if not image_path or image_path == '':
+                    return ''
+
+                resolved_path = self._resolve_image_path(image_path, excel_dir)
+
+                # Validate that the file exists
+                if resolved_path and not os.path.exists(resolved_path):
+                    print(f"⚠ Image not found: {resolved_path}")
+                    return ''
+
+                return resolved_path
+
+            df['image_path'] = df['image_path'].apply(resolve_and_validate_image_path)
 
             filtered_count = len(df)
             if filtered_count < initial_count:
