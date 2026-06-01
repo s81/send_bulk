@@ -6,13 +6,13 @@ Use ONLY for testing/development. Not for production SaaS.
 
 from selenium import webdriver
 from selenium.webdriver.common.by import By
+from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.options import Options
 import pandas as pd
 import time
 import sys
-from datetime import datetime
 import os
 
 sys.stdout.reconfigure(encoding='utf-8', errors='replace')
@@ -27,7 +27,6 @@ class WhatsAppSender:
         self.driver = None
         self.sent_count = 0
         self.failed_count = 0
-        self.log = []
 
     def setup_driver(self):
         """Initialize Chrome driver with persistent profile to skip QR scan after first login."""
@@ -82,12 +81,9 @@ class WhatsAppSender:
             df['phone'] = df['phone'].fillna('').astype(str).str.strip()
             df['message'] = df['message'].fillna('').astype(str).str.strip()
 
-            # Log rows with phone but no message before dropping them
             no_content_mask = (df['message'] == '') & (df['phone'] != '')
             for _, row in df[no_content_mask].iterrows():
-                status = f"✗ {row['phone']} - Skipped: no message"
-                print(status)
-                self.log.append(status)
+                print(f"✗ {row['phone']} - Skipped: no message")
                 self.failed_count += 1
 
             initial_count = len(df)
@@ -109,7 +105,6 @@ class WhatsAppSender:
 
     def send_text_message(self, phone, message):
         """Send a text message to a phone number."""
-        from selenium.webdriver.common.keys import Keys as _Keys
         phone_formatted = self.format_phone(phone)
         self.driver.get("about:blank")
         time.sleep(1)
@@ -130,8 +125,8 @@ class WhatsAppSender:
         )
         msg_box.click()
         time.sleep(0.5)
-        msg_box.send_keys(_Keys.CONTROL + 'a')
-        msg_box.send_keys(_Keys.DELETE)
+        msg_box.send_keys(Keys.CONTROL + 'a')
+        msg_box.send_keys(Keys.DELETE)
         msg_box.send_keys(message)
         time.sleep(1)
 
@@ -141,9 +136,7 @@ class WhatsAppSender:
         send_btn.click()
 
         self.sent_count += 1
-        status = f"✓ {phone_formatted}"
-        print(status)
-        self.log.append(status)
+        print(f"✓ {phone_formatted}")
         time.sleep(2)
 
     def _prompt_on_error(self, phone, allow_retry=True):
@@ -167,9 +160,7 @@ class WhatsAppSender:
         """Send a message with retry/skip/quit handling."""
         if not message or str(message).strip() == '':
             self.failed_count += 1
-            status = f"✗ {phone} - No message provided"
-            print(status)
-            self.log.append(status)
+            print(f"✗ {phone} - No message provided")
             return
 
         attempt = 1
@@ -186,9 +177,7 @@ class WhatsAppSender:
                         continue
                     elif action == 'skip':
                         self.failed_count += 1
-                        status = f"✗ {phone} - Skipped: {str(e)[:50]}"
-                        print(status)
-                        self.log.append(status)
+                        print(f"✗ {phone} - Skipped: {str(e)[:50]}")
                         return
                     else:
                         print("\n⚠ Exiting...")
@@ -200,9 +189,7 @@ class WhatsAppSender:
                         raise KeyboardInterrupt("User quit")
                     else:
                         self.failed_count += 1
-                        status = f"✗ {phone} - Skipped: {str(e)[:50]}"
-                        print(status)
-                        self.log.append(status)
+                        print(f"✗ {phone} - Skipped: {str(e)[:50]}")
                         return
 
     def send_bulk(self):
@@ -235,11 +222,6 @@ class WhatsAppSender:
         else:
             print("Success rate: N/A (no messages processed)")
         print(f"{'='*50}\n")
-
-        log_file = f"whatsapp_log_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
-        with open(log_file, 'w', encoding='utf-8') as f:
-            f.write("\n".join(self.log))
-        print(f"Log saved to: {log_file}")
 
     def run(self):
         """Main entry point."""
