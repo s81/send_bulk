@@ -182,6 +182,57 @@ class WhatsAppSender:
             # Let exception propagate for dispatcher to handle
             raise
 
+    def send_image_message(self, phone, image_path, caption=None):
+        """Send an image to a phone number with optional caption"""
+        try:
+            phone_formatted = self.format_phone(phone)
+
+            # Open WhatsApp chat link
+            self.driver.get(f"https://web.whatsapp.com/send?phone={phone_formatted}")
+            time.sleep(3)  # Wait for page load
+
+            # Click attachment button (paperclip icon)
+            attach_btn = WebDriverWait(self.driver, 10).until(
+                EC.presence_of_element_located((By.XPATH, "//button[contains(@aria-label, 'Attach')]"))
+            )
+            attach_btn.click()
+            time.sleep(1)
+
+            # Find and interact with file input
+            file_input = self.driver.find_element(By.CSS_SELECTOR, "input[type='file']")
+            file_input.send_keys(image_path)
+            time.sleep(2)
+
+            # Wait for preview to appear
+            WebDriverWait(self.driver, 10).until(
+                EC.presence_of_element_located((By.XPATH, "//div[@data-testid='caption']"))
+            )
+            time.sleep(1)
+
+            # Type caption if provided
+            if caption and caption.strip():
+                caption_box = self.driver.find_element(By.XPATH, "//div[@data-testid='caption']")
+                caption_box.click()
+                caption_box.send_keys(caption)
+                time.sleep(1)
+
+            # Click send button
+            send_btn = self.driver.find_element(By.XPATH, "//button[@aria-label='Send']")
+            send_btn.click()
+
+            self.sent_count += 1
+            status = f"✓ {phone_formatted} (image)"
+            print(status)
+            self.log.append(status)
+
+            # Rate limiting
+            time.sleep(2)
+            return True
+
+        except Exception as e:
+            # Let exception propagate for dispatcher to handle
+            raise
+
     def send_bulk(self):
         """Send messages to all contacts"""
         df = self.read_excel()
