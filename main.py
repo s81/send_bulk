@@ -60,6 +60,9 @@ class WhatsAppSender:
         phone = phone.replace(" ", "").replace("-", "").replace("(", "").replace(")", "")
         if phone.startswith("+"):
             return phone
+        country_digits = self.country_code.lstrip("+")
+        if phone.startswith(country_digits):
+            return f"+{phone}"
         if phone.startswith("0"):
             phone = phone[1:]
         return f"{self.country_code}{phone}"
@@ -106,20 +109,35 @@ class WhatsAppSender:
 
     def send_text_message(self, phone, message):
         """Send a text message to a phone number."""
+        from selenium.webdriver.common.keys import Keys as _Keys
         phone_formatted = self.format_phone(phone)
+        self.driver.get("about:blank")
+        time.sleep(1)
         self.driver.get(f"https://web.whatsapp.com/send?phone={phone_formatted}")
-        time.sleep(3)
+        time.sleep(5)
 
-        msg_box = WebDriverWait(self.driver, 10).until(
+        # Fail fast if number is not on WhatsApp
+        try:
+            self.driver.find_element(By.XPATH, "//*[contains(text(),'Phone number shared via URL is invalid')]"
+                                                " | //*[contains(text(),'not registered')]")
+            raise Exception(f"Phone not on WhatsApp: {phone_formatted}")
+        except Exception as e:
+            if "Phone not on WhatsApp" in str(e):
+                raise
+
+        msg_box = WebDriverWait(self.driver, 15).until(
             EC.presence_of_element_located((By.XPATH, "//div[@contenteditable='true'][@data-tab='10']"))
         )
         msg_box.click()
         time.sleep(0.5)
-        msg_box.clear()
+        msg_box.send_keys(_Keys.CONTROL + 'a')
+        msg_box.send_keys(_Keys.DELETE)
         msg_box.send_keys(message)
         time.sleep(1)
 
-        send_btn = self.driver.find_element(By.XPATH, "//button[@aria-label='Send']")
+        send_btn = WebDriverWait(self.driver, 10).until(
+            EC.element_to_be_clickable((By.XPATH, "//button[@aria-label='Send']"))
+        )
         send_btn.click()
 
         self.sent_count += 1
