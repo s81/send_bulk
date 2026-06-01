@@ -92,6 +92,7 @@ class WhatsAppSender:
         """Read Excel file and validate"""
         try:
             df = pd.read_excel(self.excel_file)
+            df.columns = df.columns.str.strip()
 
             # Check required columns (phone is required, message/image_path optional)
             if 'phone' not in df.columns:
@@ -196,11 +197,11 @@ class WhatsAppSender:
 
             # Open WhatsApp chat link
             self.driver.get(f"https://web.whatsapp.com/send?phone={phone_formatted}")
-            time.sleep(3)  # Wait for page load
+            time.sleep(3)
 
             # Click attachment button (paperclip icon)
             attach_btn = WebDriverWait(self.driver, 10).until(
-                EC.presence_of_element_located((By.XPATH, "//button[contains(@aria-label, 'Attach')]"))
+                EC.presence_of_element_located((By.XPATH, "//button[contains(@aria-label, 'Attach') or contains(@title, 'Attach')]"))
             )
             attach_btn.click()
             time.sleep(1)
@@ -208,24 +209,30 @@ class WhatsAppSender:
             # Find and interact with file input
             file_input = self.driver.find_element(By.CSS_SELECTOR, "input[type='file']")
             file_input.send_keys(image_path)
-            time.sleep(2)
+            time.sleep(3)
 
-            # Wait for preview to appear
-            WebDriverWait(self.driver, 10).until(
-                EC.presence_of_element_located((By.XPATH, "//div[@data-testid='caption']"))
-            )
-            time.sleep(1)
-
-            # Type caption if provided
+            # Type caption if provided — try multiple selectors (WhatsApp Web changes these)
             if caption and caption.strip():
-                caption_box = self.driver.find_element(By.XPATH, "//div[@data-testid='caption']")
-                caption_box.click()
-                caption_box.send_keys(caption)
-                time.sleep(1)
+                for selector in [
+                    "//div[@data-testid='media-caption-input']",
+                    "//div[@data-testid='caption']",
+                    "//div[@aria-label='Add a caption']",
+                    "//div[@contenteditable='true'][@data-tab='10']",
+                ]:
+                    try:
+                        caption_box = WebDriverWait(self.driver, 5).until(
+                            EC.presence_of_element_located((By.XPATH, selector))
+                        )
+                        caption_box.click()
+                        caption_box.send_keys(caption)
+                        time.sleep(1)
+                        break
+                    except Exception:
+                        continue
 
-            # Click send button
-            send_btn = self.driver.find_element(By.XPATH, "//button[@aria-label='Send']")
-            send_btn.click()
+            # Send via Enter key (language-independent, works in image preview)
+            self.driver.find_element(By.TAG_NAME, 'body').send_keys(Keys.ENTER)
+            time.sleep(1)
 
             self.sent_count += 1
             status = f"✓ {phone_formatted} (image)"
@@ -243,17 +250,21 @@ class WhatsAppSender:
     def _prompt_on_error(self, phone, message_type, allow_retry=True):
         """Prompt user what to do on send failure. Returns: 'retry', 'skip', or 'quit'"""
         while True:
-            if allow_retry:
-                prompt = f"\n[Error] Failed to send to {phone} ({message_type}).\n[R]etry / [S]kip / [Q]uit? "
-                choice = input(prompt).strip().upper()
-                if choice in ['R', 'S', 'Q']:
-                    return {'R': 'retry', 'S': 'skip', 'Q': 'quit'}[choice]
-            else:
-                prompt = f"\n[Error] Failed to send to {phone} ({message_type}).\n[S]kip / [Q]uit? "
-                choice = input(prompt).strip().upper()
-                if choice in ['S', 'Q']:
-                    return {'S': 'skip', 'Q': 'quit'}[choice]
-            print("Invalid choice. Please enter " + ("R, S, or Q" if allow_retry else "S or Q") + ".")
+            try:
+                if allow_retry:
+                    prompt = f"\n[Error] Failed to send to {phone} ({message_type}).\n[R]etry / [S]kip / [Q]uit? "
+                    choice = input(prompt).strip().upper()
+                    if choice in ['R', 'S', 'Q']:
+                        return {'R': 'retry', 'S': 'skip', 'Q': 'quit'}[choice]
+                else:
+                    prompt = f"\n[Error] Failed to send to {phone} ({message_type}).\n[S]kip / [Q]uit? "
+                    choice = input(prompt).strip().upper()
+                    if choice in ['S', 'Q']:
+                        return {'S': 'skip', 'Q': 'quit'}[choice]
+                print("Invalid choice. Please enter " + ("R, S, or Q" if allow_retry else "S or Q") + ".")
+            except EOFError:
+                print("(non-interactive mode — skipping)")
+                return 'skip'
 
     def send_message(self, phone, message, image_path):
         """Dispatcher: route to text or image sender with retry/skip/quit handling"""
