@@ -6,7 +6,6 @@ Use ONLY for testing/development. Not for production SaaS.
 
 from selenium import webdriver
 from selenium.webdriver.common.by import By
-from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.options import Options
@@ -20,11 +19,6 @@ sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 
 class WhatsAppSender:
     def __init__(self, excel_file, country_code="+962"):
-        """
-        Args:
-            excel_file: Path to Excel file with columns 'phone' and 'message'
-            country_code: Default country code (e.g., "+962" for Jordan, "+20" for Egypt)
-        """
         if not country_code.startswith("+"):
             raise ValueError(f"Country code must start with '+', got: {country_code}")
 
@@ -42,20 +36,15 @@ class WhatsAppSender:
         chrome_options.add_argument("--disable-dev-shm-usage")
         profile_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "chrome_profile")
         chrome_options.add_argument(f"--user-data-dir={profile_dir}")
-
         self.driver = webdriver.Chrome(options=chrome_options)
         print("✓ Chrome driver initialized")
 
     def login_whatsapp(self):
-        """Open WhatsApp Web and wait for manual QR scan"""
+        """Open WhatsApp Web and wait for login (QR scan or saved session)."""
         print("\n📱 Opening WhatsApp Web...")
         self.driver.get("https://web.whatsapp.com")
-        
-        print("⏳ Waiting for QR code scan (60 seconds)...")
-        print("🔗 Scan the QR code in the browser window with your phone")
-        
+        print("⏳ Waiting for login (60 seconds)...")
         try:
-            # Wait for chat list to load (indicates successful login)
             WebDriverWait(self.driver, 60).until(
                 EC.presence_of_element_located((By.XPATH, "//div[@data-testid='chat-list']"))
             )
@@ -66,93 +55,40 @@ class WhatsAppSender:
             return False
 
     def format_phone(self, phone):
-        """Format phone number with country code"""
+        """Format phone number with country code."""
         phone = str(phone).strip()
-        
-        # Remove spaces, dashes, parentheses
         phone = phone.replace(" ", "").replace("-", "").replace("(", "").replace(")", "")
-        
-        # If already has +, return as-is
         if phone.startswith("+"):
             return phone
-        
-        # If starts with 0, remove it (for local formats like 0123456789)
         if phone.startswith("0"):
             phone = phone[1:]
-        
-        # Add country code
         return f"{self.country_code}{phone}"
 
-    def _resolve_image_path(self, image_path, excel_dir):
-        """Resolve relative paths to absolute, leave absolute paths unchanged."""
-        if os.path.isabs(image_path):
-            return image_path
-        return os.path.abspath(os.path.join(excel_dir, image_path))
-
-    def _copy_image_to_clipboard(self, image_path):
-        """Copy image to Windows clipboard as DIB so it can be pasted into WhatsApp."""
-        import win32clipboard
-        from PIL import Image
-        import io
-        image = Image.open(image_path).convert('RGB')
-        buf = io.BytesIO()
-        image.save(buf, 'BMP')
-        data = buf.getvalue()[14:]  # strip 14-byte BMP file header, keep DIB
-        buf.close()
-        win32clipboard.OpenClipboard()
-        win32clipboard.EmptyClipboard()
-        win32clipboard.SetClipboardData(win32clipboard.CF_DIB, data)
-        win32clipboard.CloseClipboard()
-
     def read_excel(self):
-        """Read Excel file and validate"""
+        """Read Excel file and validate."""
         try:
             df = pd.read_excel(self.excel_file)
             df.columns = df.columns.str.strip()
 
-            # Check required columns (phone is required, message/image_path optional)
             if 'phone' not in df.columns:
                 print("✗ Excel must have 'phone' column")
                 return None
-
-            # Add missing columns if they don't exist
             if 'message' not in df.columns:
                 df['message'] = None
-            if 'image_path' not in df.columns:
-                df['image_path'] = None
 
-            # Convert to string and strip whitespace, handling NaN values
             df['phone'] = df['phone'].fillna('').astype(str).str.strip()
             df['message'] = df['message'].fillna('').astype(str).str.strip()
-            df['image_path'] = df['image_path'].fillna('').astype(str).str.strip()
 
-            # Resolve image paths relative to Excel directory and validate existence
-            excel_dir = os.path.dirname(os.path.abspath(self.excel_file))
-
-            def resolve_and_validate_image_path(row):
-                image_path = row['image_path']
-                if not image_path or image_path == '':
-                    return ''
-                resolved_path = self._resolve_image_path(image_path, excel_dir)
-                if not os.path.exists(resolved_path):
-                    print(f"⚠ Image not found: {resolved_path}")
-                    self.log.append(f"⚠ {row['phone']} - Image not found: {resolved_path}")
-                    return ''
-                return resolved_path
-
-            df['image_path'] = df.apply(resolve_and_validate_image_path, axis=1)
-
-            # Log rows being dropped before filtering them out
-            no_content_mask = (df['message'] == '') & (df['image_path'] == '') & (df['phone'] != '')
+            # Log rows with phone but no message before dropping them
+            no_content_mask = (df['message'] == '') & (df['phone'] != '')
             for _, row in df[no_content_mask].iterrows():
-                status = f"✗ {row['phone']} - Skipped: no message or image"
+                status = f"✗ {row['phone']} - Skipped: no message"
                 print(status)
                 self.log.append(status)
                 self.failed_count += 1
 
-            # Filter: at least one of message or image_path must be provided
             initial_count = len(df)
-            df = df[~((df['message'] == '') & (df['image_path'] == ''))]
+            df = df[df['message'] != '']
             df = df[df['phone'] != '']
 
             filtered_count = len(df)
@@ -169,107 +105,39 @@ class WhatsAppSender:
             return None
 
     def send_text_message(self, phone, message):
-        """Send a text message to a phone number"""
-        try:
-            phone_formatted = self.format_phone(phone)
+        """Send a text message to a phone number."""
+        phone_formatted = self.format_phone(phone)
+        self.driver.get(f"https://web.whatsapp.com/send?phone={phone_formatted}")
+        time.sleep(3)
 
-            # Open WhatsApp chat link
-            self.driver.get(f"https://web.whatsapp.com/send?phone={phone_formatted}")
-            time.sleep(3)  # Wait for page load
+        msg_box = WebDriverWait(self.driver, 10).until(
+            EC.presence_of_element_located((By.XPATH, "//div[@contenteditable='true'][@data-tab='10']"))
+        )
+        msg_box.click()
+        time.sleep(0.5)
+        msg_box.clear()
+        msg_box.send_keys(message)
+        time.sleep(1)
 
-            # Find message input box
-            msg_box = WebDriverWait(self.driver, 10).until(
-                EC.presence_of_element_located((By.XPATH, "//div[@contenteditable='true'][@data-tab='10']"))
-            )
+        send_btn = self.driver.find_element(By.XPATH, "//button[@aria-label='Send']")
+        send_btn.click()
 
-            # Clear and type message
-            msg_box.click()
-            time.sleep(0.5)
-            msg_box.clear()
-            msg_box.send_keys(message)
-            time.sleep(1)
+        self.sent_count += 1
+        status = f"✓ {phone_formatted}"
+        print(status)
+        self.log.append(status)
+        time.sleep(2)
 
-            # Click send button
-            send_btn = self.driver.find_element(By.XPATH, "//button[@aria-label='Send']")
-            send_btn.click()
-
-            self.sent_count += 1
-            status = f"✓ {phone_formatted} (text)"
-            print(status)
-            self.log.append(status)
-
-            # Rate limiting
-            time.sleep(2)
-            return True
-
-        except Exception as e:
-            # Let exception propagate for dispatcher to handle
-            raise
-
-    def send_image_message(self, phone, image_path, caption=None):
-        """Send an image by pasting it from clipboard into the chat input."""
-        try:
-            phone_formatted = self.format_phone(phone)
-
-            self.driver.get(f"https://web.whatsapp.com/send?phone={phone_formatted}")
-            time.sleep(3)
-
-            # Copy image to clipboard then paste into the chat input
-            self._copy_image_to_clipboard(image_path)
-            msg_box = WebDriverWait(self.driver, 10).until(
-                EC.presence_of_element_located((By.XPATH, "//div[@contenteditable='true'][@data-tab='10']"))
-            )
-            msg_box.click()
-            msg_box.send_keys(Keys.CONTROL + 'v')
-            time.sleep(2)
-
-            # Type caption in preview modal if provided
-            if caption and caption.strip():
-                for selector in [
-                    "//div[@data-testid='media-caption-input']",
-                    "//div[@data-testid='caption']",
-                    "//div[@aria-label='Add a caption']",
-                    "//div[@contenteditable='true'][@data-tab='10']",
-                ]:
-                    try:
-                        caption_box = WebDriverWait(self.driver, 5).until(
-                            EC.presence_of_element_located((By.XPATH, selector))
-                        )
-                        caption_box.click()
-                        caption_box.send_keys(caption)
-                        time.sleep(1)
-                        break
-                    except Exception:
-                        continue
-
-            self.driver.find_element(By.TAG_NAME, 'body').send_keys(Keys.ENTER)
-            time.sleep(1)
-
-            self.sent_count += 1
-            status = f"✓ {phone_formatted} (image)"
-            print(status)
-            self.log.append(status)
-
-            # Rate limiting
-            time.sleep(2)
-            return True
-
-        except Exception as e:
-            # Let exception propagate for dispatcher to handle
-            raise
-
-    def _prompt_on_error(self, phone, message_type, allow_retry=True):
-        """Prompt user what to do on send failure. Returns: 'retry', 'skip', or 'quit'"""
+    def _prompt_on_error(self, phone, allow_retry=True):
+        """Prompt user what to do on send failure. Returns: 'retry', 'skip', or 'quit'."""
         while True:
             try:
                 if allow_retry:
-                    prompt = f"\n[Error] Failed to send to {phone} ({message_type}).\n[R]etry / [S]kip / [Q]uit? "
-                    choice = input(prompt).strip().upper()
+                    choice = input(f"\n[Error] Failed to send to {phone}.\n[R]etry / [S]kip / [Q]uit? ").strip().upper()
                     if choice in ['R', 'S', 'Q']:
                         return {'R': 'retry', 'S': 'skip', 'Q': 'quit'}[choice]
                 else:
-                    prompt = f"\n[Error] Failed to send to {phone} ({message_type}).\n[S]kip / [Q]uit? "
-                    choice = input(prompt).strip().upper()
+                    choice = input(f"\n[Error] Failed to send to {phone}.\n[S]kip / [Q]uit? ").strip().upper()
                     if choice in ['S', 'Q']:
                         return {'S': 'skip', 'Q': 'quit'}[choice]
                 print("Invalid choice. Please enter " + ("R, S, or Q" if allow_retry else "S or Q") + ".")
@@ -277,53 +145,24 @@ class WhatsAppSender:
                 print("(non-interactive mode — skipping)")
                 return 'skip'
 
-    def send_message(self, phone, message, image_path):
-        """Dispatcher: route to text or image sender with retry/skip/quit handling"""
-        # Validate inputs
-        has_message = message and str(message).strip() != ''
-        has_image = image_path and str(image_path).strip() != ''
-
-        if not has_message and not has_image:
+    def send_message(self, phone, message):
+        """Send a message with retry/skip/quit handling."""
+        if not message or str(message).strip() == '':
             self.failed_count += 1
-            status = f"✗ {phone} - No message or image provided"
+            status = f"✗ {phone} - No message provided"
             print(status)
             self.log.append(status)
             return
 
-        # Validate image file exists if provided
-        if has_image:
-            if not os.path.exists(image_path):
-                self.failed_count += 1
-                status = f"✗ {phone} - Image not found: {image_path}"
-                print(status)
-                self.log.append(status)
-                return
-            if not os.access(image_path, os.R_OK):
-                self.failed_count += 1
-                status = f"✗ {phone} - Cannot read image: {image_path}"
-                print(status)
-                self.log.append(status)
-                return
-
-        # Route to appropriate sender
-        message_type = 'image' if has_image else 'text'
         attempt = 1
         max_attempts = 2
-
         while attempt <= max_attempts:
             try:
-                if has_image:
-                    caption = message if has_message else None
-                    self.send_image_message(phone, image_path, caption)
-                else:
-                    self.send_text_message(phone, message)
-
-                return  # Success, exit function
-
+                self.send_text_message(phone, message)
+                return
             except Exception as e:
                 if attempt < max_attempts:
-                    # First failure - offer full retry/skip/quit
-                    action = self._prompt_on_error(phone, message_type)
+                    action = self._prompt_on_error(phone)
                     if action == 'retry':
                         attempt += 1
                         continue
@@ -333,16 +172,15 @@ class WhatsAppSender:
                         print(status)
                         self.log.append(status)
                         return
-                    else:  # quit
+                    else:
                         print("\n⚠ Exiting...")
                         raise KeyboardInterrupt("User quit")
                 else:
-                    # Final attempt - only offer skip/quit (no retry)
-                    action = self._prompt_on_error(phone, message_type, allow_retry=False)
+                    action = self._prompt_on_error(phone, allow_retry=False)
                     if action == 'quit':
                         print("\n⚠ Exiting...")
                         raise KeyboardInterrupt("User quit")
-                    else:  # skip
+                    else:
                         self.failed_count += 1
                         status = f"✗ {phone} - Skipped: {str(e)[:50]}"
                         print(status)
@@ -350,7 +188,7 @@ class WhatsAppSender:
                         return
 
     def send_bulk(self):
-        """Send messages to all contacts"""
+        """Send messages to all contacts."""
         df = self.read_excel()
         if df is None or len(df) == 0:
             print("✗ No data to process")
@@ -360,19 +198,14 @@ class WhatsAppSender:
             return
 
         print(f"\n📤 Starting bulk send... ({len(df)} messages)\n")
-        
         for i, (idx, row) in enumerate(df.iterrows(), start=1):
-            phone = row['phone']
-            message = row['message']
-
-            image_path = row['image_path']
             print(f"[{i}/{len(df)}] ", end="")
-            self.send_message(phone, message, image_path)
-        
+            self.send_message(row['phone'], row['message'])
+
         self.print_summary()
 
     def print_summary(self):
-        """Print results summary"""
+        """Print results summary."""
         total = self.sent_count + self.failed_count
         print(f"\n{'='*50}")
         print(f"📊 SUMMARY")
@@ -384,15 +217,14 @@ class WhatsAppSender:
         else:
             print("Success rate: N/A (no messages processed)")
         print(f"{'='*50}\n")
-        
-        # Save log
+
         log_file = f"whatsapp_log_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
         with open(log_file, 'w', encoding='utf-8') as f:
             f.write("\n".join(self.log))
         print(f"Log saved to: {log_file}")
 
     def run(self):
-        """Main entry point"""
+        """Main entry point."""
         try:
             self.setup_driver()
             self.send_bulk()
@@ -402,10 +234,9 @@ class WhatsAppSender:
 
 
 if __name__ == "__main__":
-    # Usage
     if len(sys.argv) < 2:
-        print("Usage: python send_bulk.py <excel_file> [country_code]")
-        print("Example: python send_bulk.py messages.xlsx +962")
+        print("Usage: python main.py <excel_file> [country_code]")
+        print("Example: python main.py messages.xlsx +962")
         sys.exit(1)
 
     excel_file = sys.argv[1]
