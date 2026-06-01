@@ -233,14 +233,20 @@ class WhatsAppSender:
             # Let exception propagate for dispatcher to handle
             raise
 
-    def _prompt_on_error(self, phone, message_type):
+    def _prompt_on_error(self, phone, message_type, allow_retry=True):
         """Prompt user what to do on send failure. Returns: 'retry', 'skip', or 'quit'"""
         while True:
-            prompt = f"\n[Error] Failed to send to {phone} ({message_type}).\n[R]etry / [S]kip / [Q]uit? "
-            choice = input(prompt).strip().upper()
-            if choice in ['R', 'S', 'Q']:
-                return {'R': 'retry', 'S': 'skip', 'Q': 'quit'}[choice]
-            print("Invalid choice. Please enter R, S, or Q.")
+            if allow_retry:
+                prompt = f"\n[Error] Failed to send to {phone} ({message_type}).\n[R]etry / [S]kip / [Q]uit? "
+                choice = input(prompt).strip().upper()
+                if choice in ['R', 'S', 'Q']:
+                    return {'R': 'retry', 'S': 'skip', 'Q': 'quit'}[choice]
+            else:
+                prompt = f"\n[Error] Failed to send to {phone} ({message_type}).\n[S]kip / [Q]uit? "
+                choice = input(prompt).strip().upper()
+                if choice in ['S', 'Q']:
+                    return {'S': 'skip', 'Q': 'quit'}[choice]
+            print("Invalid choice. Please enter " + ("R, S, or Q" if allow_retry else "S or Q") + ".")
 
     def send_message(self, phone, message, image_path):
         """Dispatcher: route to text or image sender with retry/skip/quit handling"""
@@ -303,18 +309,13 @@ class WhatsAppSender:
                         raise KeyboardInterrupt("User quit")
                 else:
                     # Final attempt - only offer skip/quit (no retry)
-                    while True:
-                        prompt = f"\n[Error] Failed to send to {phone} ({message_type}).\n[S]kip / [Q]uit? "
-                        choice = input(prompt).strip().upper()
-                        if choice in ['S', 'Q']:
-                            break
-                        print("Invalid choice. Please enter S or Q.")
-                    if choice == 'Q':
+                    action = self._prompt_on_error(phone, message_type, allow_retry=False)
+                    if action == 'quit':
                         print("\n⚠ Exiting...")
                         raise KeyboardInterrupt("User quit")
                     else:  # skip
                         self.failed_count += 1
-                        status = f"✗ {phone} - {str(e)[:50]}"
+                        status = f"✗ {phone} - Skipped: {str(e)[:50]}"
                         print(status)
                         self.log.append(status)
                         return
