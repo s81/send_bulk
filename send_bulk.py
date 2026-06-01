@@ -17,12 +17,6 @@ from datetime import datetime
 import os
 
 class WhatsAppSender:
-    def _resolve_image_path(self, image_path, excel_dir):
-        """Resolve relative paths to absolute, leave absolute paths unchanged."""
-        if os.path.isabs(image_path):
-            return image_path
-        return os.path.abspath(os.path.join(excel_dir, image_path))
-
     def __init__(self, excel_file, country_code="+962"):
         """
         Args:
@@ -85,6 +79,12 @@ class WhatsAppSender:
         
         # Add country code
         return f"{self.country_code}{phone}"
+
+    def _resolve_image_path(self, image_path, excel_dir):
+        """Resolve relative paths to absolute, leave absolute paths unchanged."""
+        if os.path.isabs(image_path):
+            return image_path
+        return os.path.abspath(os.path.join(excel_dir, image_path))
 
     def read_excel(self):
         """Read Excel file and validate"""
@@ -375,12 +375,12 @@ class WhatsAppSender:
 if __name__ == "__main__":
     # Usage
     if len(sys.argv) < 2:
-        print("Usage: python whatsapp_sender.py <excel_file> [country_code]")
-        print("Example: python whatsapp_sender.py messages.xlsx +20")
+        print("Usage: python send_bulk.py <excel_file> [country_code]")
+        print("Example: python send_bulk.py messages.xlsx +962")
         sys.exit(1)
 
     excel_file = sys.argv[1]
-    country_code = sys.argv[2] if len(sys.argv) > 2 else "+20"
+    country_code = sys.argv[2] if len(sys.argv) > 2 else "+962"
 
     try:
         sender = WhatsAppSender(excel_file, country_code)
