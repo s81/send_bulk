@@ -16,11 +16,11 @@ import sys
 from datetime import datetime
 
 class WhatsAppSender:
-    def __init__(self, excel_file, country_code="+20"):
+    def __init__(self, excel_file, country_code="+962"):
         """
         Args:
             excel_file: Path to Excel file with columns 'phone' and 'message'
-            country_code: Default country code (e.g., "+20" for Egypt, "+962" for Jordan)
+            country_code: Default country code (e.g., "+962" for Jordan, "+20" for Egypt)
         """
         if not country_code.startswith("+"):
             raise ValueError(f"Country code must start with '+', got: {country_code}")
